@@ -1,13 +1,14 @@
 /**
  * Solscan API Client
- * Fetches transaction data from Solscan API v2.0
+ * Fetches transaction data from Solscan API v1.0 (Free Tier)
  * Rate Limit: 1 request per 60 seconds
  */
 
 import axios, { AxiosInstance } from 'axios';
 import { SolscanTokenTransfer, SolscanTransaction } from './types';
 
-const SOLSCAN_API_BASE = 'https://pro-api.solscan.io/v2.0';
+// Use v1.0 API for free tier compatibility
+const SOLSCAN_API_BASE = 'https://public-api.solscan.io';
 const SOLSCAN_API_KEY = process.env.SOLSCAN_API_KEY || '';
 const RATE_LIMIT_SECONDS = parseInt(process.env.SOLSCAN_RATE_LIMIT_SECONDS || '60', 10);
 
@@ -54,7 +55,7 @@ function createSolscanClient(): AxiosInstance {
 }
 
 /**
- * Fetch token transfers for a wallet
+ * Fetch token transfers for a wallet using v1.0 API
  * Respects rate limiting (1 request per 60 seconds)
  * Respects TEST_MODE for limited transaction fetching
  */
@@ -74,45 +75,55 @@ export async function fetchTokenTransfers(
     }
 
     const client = createSolscanClient();
-    const allTransfers: SolscanTokenTransfer[] = [];
-    let page = 1;
-    const pageSize = Math.min(limit, 100); // Max 100 per page
+    const allTransfers: any[] = [];
+    let offset = 0;
+    const pageSize = 50; // v1.0 API default
 
     try {
         while (allTransfers.length < limit) {
             // Enforce rate limit before each request
             await enforceRateLimit();
 
-            console.log(`Fetching page ${page} (${allTransfers.length}/${limit} transactions)...`);
+            console.log(`Fetching transactions (${allTransfers.length}/${limit})...`);
 
-            const response = await client.get('/account/token/txs', {
+            // v1.0 API endpoint: /account/tokens
+            const response = await client.get('/account/tokens', {
                 params: {
-                    address: walletAddress,
-                    page,
-                    page_size: pageSize,
-                    sort_by: 'block_time',
-                    sort_order: 'desc',
-                    ...(startTime && { from_time: startTime }),
-                    ...(endTime && { to_time: endTime }),
+                    account: walletAddress,
+                    offset,
+                    limit: Math.min(pageSize, limit - allTransfers.length),
                 },
             });
 
-            const transfers = response.data?.data || [];
+            const data = response.data;
 
-            if (transfers.length === 0) {
+            if (!data || !Array.isArray(data) || data.length === 0) {
                 console.log('No more transactions available');
-                break; // No more data
+                break;
             }
+
+            // Transform v1.0 response to match our expected format
+            const transfers = data.map((item: any) => ({
+                trans_id: item.transactionHash || item.txHash || '',
+                time: item.blockTime || Math.floor(Date.now() / 1000),
+                from_address: item.from || walletAddress,
+                to_address: item.to || '',
+                token_address: item.tokenAddress || '',
+                token_symbol: item.tokenSymbol || item.symbol || 'UNKNOWN',
+                token_decimals: item.tokenDecimals || item.decimals || 9,
+                amount: item.tokenAmount?.uiAmount || item.amount || 0,
+                flow: item.changeType || (item.from === walletAddress ? 'out' : 'in'),
+            }));
 
             allTransfers.push(...transfers);
             console.log(`✓ Fetched ${transfers.length} transactions (total: ${allTransfers.length})`);
 
             // Check if we've reached the limit
-            if (allTransfers.length >= limit || transfers.length < pageSize) {
+            if (allTransfers.length >= limit || data.length < pageSize) {
                 break;
             }
 
-            page++;
+            offset += pageSize;
         }
 
         const finalTransfers = allTransfers.slice(0, limit);
@@ -125,6 +136,16 @@ export async function fetchTokenTransfers(
         return finalTransfers;
     } catch (error: any) {
         console.error('Solscan API error:', error.response?.data || error.message);
+
+        // Check if it's an API tier issue
+        if (error.response?.status === 401) {
+            throw new Error(
+                'Solscan API authentication failed. ' +
+                'Your API key may be invalid or expired. ' +
+                'Get a new key from https://pro.solscan.io/'
+            );
+        }
+
         throw new Error(`Failed to fetch token transfers: ${error.message}`);
     }
 }
@@ -149,7 +170,7 @@ export async function fetchAccountTransactions(
     }
 
     const client = createSolscanClient();
-    const allTransactions: SolscanTransaction[] = [];
+    const allTransactions: any[] = [];
     let beforeSignature: string | undefined;
 
     try {
@@ -159,13 +180,13 @@ export async function fetchAccountTransactions(
 
             const response = await client.get('/account/transactions', {
                 params: {
-                    address: walletAddress,
+                    account: walletAddress,
                     limit: Math.min(50, limit - allTransactions.length),
                     ...(beforeSignature && { before: beforeSignature }),
                 },
             });
 
-            const transactions = response.data?.data || [];
+            const transactions = response.data || [];
 
             if (transactions.length === 0) {
                 break;
@@ -222,11 +243,11 @@ export async function fetchTokenMetadata(
 
         const response = await client.get('/token/meta', {
             params: {
-                address: tokenAddress,
+                token: tokenAddress,
             },
         });
 
-        const data = response.data?.data;
+        const data = response.data;
 
         return {
             symbol: data?.symbol || 'UNKNOWN',
