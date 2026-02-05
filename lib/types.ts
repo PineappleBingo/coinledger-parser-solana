@@ -16,15 +16,16 @@ export type CoinLedgerType =
 
 export interface SolscanTokenTransfer {
     trans_id: string;
-    block_id: number;
-    time: number; // Unix timestamp
-    status: 'Success' | 'Fail';
+    block_id?: number;
+    time: string; // Unix timestamp as string
+    status?: 'Success' | 'Fail';
     from_address: string;
     to_address: string;
     token_address: string;
     token_decimals: number;
     token_symbol: string;
-    amount: string; // Raw amount as string
+    amount: number; // Un amount
+    flow: 'in' | 'out';
     fee?: number; // in lamports
 }
 
@@ -81,6 +82,7 @@ export interface NormalizedTransaction {
 
     // Metadata
     priceUSD?: number;
+    tokenImageUrl?: string; // Token logo image URL
     isSpam: boolean;
     spamConfidence: number;
     spamReasons: string[];

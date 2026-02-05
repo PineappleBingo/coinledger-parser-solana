@@ -43,24 +43,37 @@ export async function POST(req: NextRequest) {
 
         console.log(`Fetched ${rawTransfers.length} raw transfers`);
 
-        // 2. Parse transactions
+        // 2. Enrich with token metadata from Helius
+        console.log('Fetching token metadata...');
+        const uniqueTokenAddresses = Array.from(
+            new Set(rawTransfers.map((t) => t.token_address).filter(Boolean))
+        );
+
+        const { batchFetchTokenMetadata } = await import('@/lib/helius-metadata');
+        const tokenMetadataMap = await batchFetchTokenMetadata(uniqueTokenAddresses);
+
+        // 3. Parse transactions with metadata
         const parsedTransactions = rawTransfers.map((transfer) => {
+            const metadata = tokenMetadataMap.get(transfer.token_address);
             const parsed = parseTokenTransfer(transfer, walletAddress);
+
             return {
                 ...parsed,
                 id: transfer.trans_id,
                 txHash: transfer.trans_id,
-                timestamp: new Date(transfer.time * 1000),
+                timestamp: new Date(parseInt(transfer.time) * 1000),
+                assetSent: metadata?.symbol || transfer.token_symbol || 'UNKNOWN',
+                assetReceived: metadata?.symbol || transfer.token_symbol || 'UNKNOWN',
+                tokenImageUrl: metadata?.logoURI,
                 type: classifyTransactionType(parsed),
                 description: generateDescription(parsed),
                 isSpam: false,
                 spamConfidence: 0,
                 spamReasons: [],
-                aiConfidence: 0.5,
             } as NormalizedTransaction;
         });
 
-        console.log(`Parsed ${parsedTransactions.length} transactions`);
+        console.log(`Parsed ${parsedTransactions.length} transactions with metadata`);
 
         // 3. Fetch prices for all unique tokens
         const uniqueTokens = Array.from(
