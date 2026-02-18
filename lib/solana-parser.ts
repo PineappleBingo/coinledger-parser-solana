@@ -128,7 +128,7 @@ export function parseGroupedTransfers(
         tokenImageUrl: sentMetadata?.logoURI || receivedMetadata?.logoURI,
 
         // Spam detection (to be filled by AI)
-        isSpam: false,
+        isSpam: undefined as unknown as boolean, // undefined = not yet classified; false = manually classified as not-spam
         spamConfidence: 0,
         spamReasons: [],
         aiConfidence: 0.5,

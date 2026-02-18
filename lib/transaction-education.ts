@@ -61,6 +61,14 @@ export const TRANSACTION_TYPE_INFO: Record<string, TransactionTypeInfo> = {
         taxable: 'Yes',
         learnMore: 'Crypto received as payment is taxed as income at FMV. May also be subject to self-employment tax.',
     },
+    'Rent Recovery': {
+        type: 'Income',
+        icon: '🏠',
+        title: 'Rent Recovery (Account Closure)',
+        description: 'SOL returned from closing a Solana token account. Solana charges ~0.002 SOL rent to create token accounts — this is that rent being returned when the account is closed.',
+        taxable: 'Yes',
+        learnMore: 'Rent recovery is classified as Income. The returned SOL establishes a new cost basis at the time of receipt.',
+    },
     'Mining': {
         type: 'Mining',
         icon: '⛏️',
@@ -93,13 +101,21 @@ export const TRANSACTION_TYPE_INFO: Record<string, TransactionTypeInfo> = {
         taxable: 'Yes',
         learnMore: 'Using crypto as payment is treated as selling it, triggering capital gains/losses.',
     },
-    'SPAM': {
-        type: 'SPAM',
-        icon: '⚠️',
-        title: 'Spam / Dusting Attack',
-        description: 'Unsolicited tokens with zero or minimal value sent to your wallet. This is a dusting attack for tracking or phishing. Do not interact with these tokens!',
+    'Ignored': {
+        type: 'Ignored',
+        icon: '🚫',
+        title: 'Ignored (Spam / Dust)',
+        description: 'Unsolicited tokens with zero or minimal value sent to your wallet. CoinLedger recommends marking spam dust as "Ignored" to completely exclude from tax reports and calculations.',
         taxable: 'No',
-        learnMore: 'Spam tokens have $0 value and should be excluded from tax reports. Never click links or try to sell spam tokens.',
+        learnMore: 'Mark as "Ignored" in CoinLedger. Never interact with spam tokens — they may be phishing scams. If you burn them, reclaimed rent SOL is treated as Income.',
+    },
+    'SPAM': {
+        type: 'Ignored',
+        icon: '🚫',
+        title: 'Ignored (Spam / Dust)',
+        description: 'Unsolicited tokens with zero or minimal value sent to your wallet. CoinLedger recommends marking spam dust as "Ignored" to completely exclude from tax reports and calculations.',
+        taxable: 'No',
+        learnMore: 'Mark as "Ignored" in CoinLedger. Never interact with spam tokens — they may be phishing scams. If you burn them, reclaimed rent SOL is treated as Income.',
     },
     'Interest': {
         type: 'Interest',
@@ -163,10 +179,15 @@ export const TRANSACTION_TYPE_INFO: Record<string, TransactionTypeInfo> = {
 /**
  * Get transaction type information for tooltip
  */
-export function getTransactionTypeInfo(type: string): TransactionTypeInfo {
-    // Check if transaction is spam-related
-    if (type.toUpperCase().includes('SPAM') || type === 'UNKNOWN') {
-        return TRANSACTION_TYPE_INFO['SPAM'];
+export function getTransactionTypeInfo(type: string, description?: string): TransactionTypeInfo {
+    // Check if transaction is spam-related → show as Ignored
+    if (type.toUpperCase().includes('SPAM') || type === 'Ignored') {
+        return TRANSACTION_TYPE_INFO['Ignored'];
+    }
+
+    // Check if this is a rent recovery transaction (Income type with rent description)
+    if (type === 'Income' && description && description.toLowerCase().includes('rent recovery')) {
+        return TRANSACTION_TYPE_INFO['Rent Recovery'];
     }
 
     return TRANSACTION_TYPE_INFO[type] || TRANSACTION_TYPE_INFO['UNKNOWN'];

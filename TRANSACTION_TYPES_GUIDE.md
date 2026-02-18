@@ -97,10 +97,10 @@ Type: Withdrawal
 
 ---
 
-### 4. **⚠️ Spam / Dusting Attack**
+### 4. **🚫 Spam / Dusting Attack → Ignored**
 
 **What it is:**
-Unsolicited tiny amounts of tokens sent to your wallet, often for tracking, phishing, or promotional purposes. This is what your transaction appears to be!
+Unsolicited tiny amounts of tokens sent to your wallet, often for tracking, phishing, or promotional purposes.
 
 **How to identify:**
 - Very small or zero value received
@@ -115,33 +115,45 @@ Unsolicited tiny amounts of tokens sent to your wallet, often for tracking, phis
 3. **Fake Tokens**: Tokens with names mimicking popular projects
 4. **Airdrop Scams**: Tokens requiring you to "claim" via malicious website
 
-**Example from your transaction:**
+**Example:**
 ```
 Transaction: 3bfiP2q...fGat
 Date: 2025-12-25 14:59:29
 Sent: -
 Received: 0 UNKNOWN
-Label on Solscan: SPAM Dusting
-Type: Spam / Unwanted Airdrop
+Label: 🚫 Ignored (Spam Dust)
 ```
 
 **Tax Implications:**
-- **Taxable Event**: Technically yes, but value is typically $0
-- IRS requires reporting all income, but spam tokens have no market value
-- If value is $0, no tax owed
-- **Best Practice**: Exclude from tax report if value is $0 and clearly spam
+- **Taxable Event**: No — mark as **Ignored** in CoinLedger
+- CoinLedger's "Ignored" classification completely excludes transactions from tax reports
+- No capital gains, no income, no cost basis tracking
+- **Best Practice**: Always mark spam dust as "Ignored"
+
+**How to Handle in CoinLedger:**
+1. Navigate to **Transactions** page
+2. Find the spam transaction
+3. Click the **three dots (...)** → Select **Ignore**
+4. Transaction appears crossed out and is excluded from all tax calculations
+5. For multiple spam transactions: Use **Bulk Actions** → **Ignore**
 
 **Security Risks:**
 ⚠️ **NEVER interact with spam tokens:**
-- Don't visit linked websites
-- Don't try to sell or swap spam tokens
+- Don't visit linked websites — these are phishing scams
+- Don't try to sell or swap spam tokens — malicious contracts may drain your wallet
 - Don't connect wallet to "claim" pages
-- May be phishing attempts to drain your wallet
+- **Just Ignore**: Hide in your wallet (Phantom/Solflare) and mark as Ignored in CoinLedger
+
+**Reclaiming Rent (Advanced):**
+If you have many spam tokens, you can burn them to reclaim ~0.002 SOL rent per token:
+- Use tools like "Sol Incinerator" or Phantom's built-in burn feature
+- The reclaimed SOL is classified as **Income** (Rent Recovery)
+- See Section 8: Rent Recovery for details
 
 **CoinLedger Handling:**
-- **Recommended**: Filter out with spam detection
-- If included: Label as "Airdrop" with $0 value
-- Add note: "Spam token - no value"
+- **Label as**: "Ignored" (not Income, not Airdrop)
+- Completely excluded from tax reports and calculations
+- Our system automatically labels spam as 🚫 Ignored in previews
 
 ---
 
@@ -231,6 +243,35 @@ Label as "Airdrop" or "Income". Must report FMV as income on tax return.
 
 ---
 
+### 8. **🏠 Rent Recovery (Account Closure)**
+
+**What it is:**
+SOL returned from closing a Solana token account. Solana requires ~0.00203928 SOL as rent-exempt deposit when creating a token account. When the account is closed (e.g., after selling all of a token), this rent is returned to your wallet.
+
+**How to identify:**
+- Small SOL amount received (~0.002 SOL)
+- No token sent or received
+- Transaction involves `CloseAccount` instruction
+- Originated from a token account you own
+
+**Tax Implications:**
+- **Taxable Event**: Yes - classified as Income
+- The returned SOL establishes a new cost basis at fair market value when received
+- Typically very small amounts ($0.30-$0.50)
+
+**Example:**
+```
+Sent: -
+Received: 0.00203928 SOL
+Type: Income
+Description: Rent recovery: 0.002039 SOL
+```
+
+**CoinLedger Handling:**
+Label as "Income". The system automatically detects rent recovery and classifies it correctly. These are explicitly NOT marked as spam.
+
+---
+
 ## 🔍 How to Identify Spam Transactions
 
 ### Visual Indicators:
@@ -292,6 +333,8 @@ Did you receive tokens?
 │  │     │  └─ NO
 │  │     │     ├─ Has value → Research (possible airdrop)
 │  │     │     └─ No/minimal value → Spam
+│  │     ├─ Is it ~0.002 SOL from account closure?
+│  │     │  └─ YES → Rent Recovery (Income)
 └─ NO (only sent)
    └─ Withdrawal or Fee
 ```
@@ -337,10 +380,14 @@ This is a classic dusting attack. Someone sent you worthless tokens (0 quantity)
 | **Trade** | Token A | Token B | ✅ Yes | Trade |
 | **Deposit** | - | Tokens | ⚠️ Depends | Deposit |
 | **Withdrawal** | Tokens | - | ⚠️ Depends | Withdrawal |
-| **Spam** | - | $0 tokens | ❌ No | Exclude |
+| **Spam Dust** | - | $0 tokens | ❌ No | **Ignored** |
 | **Staking** | - | Rewards | ✅ Yes | Staking |
 | **Airdrop** | - | Tokens | ✅ Yes | Airdrop/Income |
 | **NFT Mint** | Payment | NFT | ✅ Yes | Trade |
+| **Rent Recovery** | - | ~0.002 SOL | ✅ Yes | Income |
+| **Investment Loss** | Token | Less value | ✅ Yes | Investment Loss |
+| **Theft Loss** | Token | - (stolen) | ⚠️ Depends | Theft Loss |
+| **Casualty Loss** | Token | - (exploit) | ⚠️ Depends | Casualty Loss |
 
 ---
 
@@ -359,6 +406,6 @@ This guide is for educational purposes only and does not constitute tax, legal, 
 
 ---
 
-**Last Updated:** February 5, 2026
-**Version:** 1.0
+**Last Updated:** February 18, 2026
+**Version:** 2.0
 **Maintained by:** Solana Tax Bridge Project

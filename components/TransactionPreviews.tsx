@@ -104,12 +104,13 @@ export function PreviewA({
                                         )}
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${tx.type === 'Trade' ? 'bg-blue-500/20 text-blue-400' :
-                                                    tx.type === 'Deposit' ? 'bg-green-500/20 text-green-400' :
-                                                        tx.type === 'Withdrawal' ? 'bg-red-500/20 text-red-400' :
-                                                            'bg-gray-500/20 text-gray-400'
+                                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${tx.isSpam ? 'bg-gray-500/20 text-gray-400 line-through' :
+                                                    tx.type === 'Trade' ? 'bg-blue-500/20 text-blue-400' :
+                                                        tx.type === 'Deposit' ? 'bg-green-500/20 text-green-400' :
+                                                            tx.type === 'Withdrawal' ? 'bg-red-500/20 text-red-400' :
+                                                                'bg-gray-500/20 text-gray-400'
                                                     }`}>
-                                                    {tx.type}
+                                                    {tx.isSpam ? '🚫 Ignored' : tx.type}
                                                 </span>
 
                                                 {/* Info Icon with Tooltip */}
@@ -128,38 +129,32 @@ export function PreviewA({
                                                     <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute left-0 top-6 z-50 w-80">
                                                         <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-xl">
                                                             <div className="flex items-start gap-2 mb-2">
-                                                                <span className="text-2xl">{getTransactionIcon(tx.type)}</span>
+                                                                <span className="text-2xl">{tx.isSpam ? '🚫' : getTransactionIcon(tx.type)}</span>
                                                                 <div>
                                                                     <div className="font-semibold text-white mb-1">
-                                                                        {getTransactionTypeInfo(tx.type).title}
+                                                                        {tx.isSpam ? getTransactionTypeInfo('Ignored').title : getTransactionTypeInfo(tx.type, tx.description).title}
                                                                     </div>
                                                                     <div className="text-xs text-gray-400 mb-2">
-                                                                        Taxable: <span className={`font-semibold ${getTransactionTypeInfo(tx.type).taxable === 'Yes' ? 'text-red-400' :
-                                                                            getTransactionTypeInfo(tx.type).taxable === 'No' ? 'text-green-400' :
+                                                                        Taxable: <span className={`font-semibold ${(tx.isSpam ? getTransactionTypeInfo('Ignored') : getTransactionTypeInfo(tx.type, tx.description)).taxable === 'Yes' ? 'text-red-400' :
+                                                                            (tx.isSpam ? getTransactionTypeInfo('Ignored') : getTransactionTypeInfo(tx.type, tx.description)).taxable === 'No' ? 'text-green-400' :
                                                                                 'text-yellow-400'
                                                                             }`}>
-                                                                            {getTransactionTypeInfo(tx.type).taxable}
+                                                                            {(tx.isSpam ? getTransactionTypeInfo('Ignored') : getTransactionTypeInfo(tx.type, tx.description)).taxable}
                                                                         </span>
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             <p className="text-sm text-gray-300 mb-2">
-                                                                {getTransactionTypeInfo(tx.type).description}
+                                                                {(tx.isSpam ? getTransactionTypeInfo('Ignored') : getTransactionTypeInfo(tx.type, tx.description)).description}
                                                             </p>
                                                             <p className="text-xs text-gray-500 italic">
-                                                                💡 {getTransactionTypeInfo(tx.type).learnMore}
+                                                                💡 {(tx.isSpam ? getTransactionTypeInfo('Ignored') : getTransactionTypeInfo(tx.type, tx.description)).learnMore}
                                                             </p>
                                                         </div>
                                                         {/* Arrow */}
                                                         <div className="absolute left-4 -top-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-700"></div>
                                                     </div>
                                                 </div>
-
-                                                {tx.isSpam && (
-                                                    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-500/20 text-red-400">
-                                                        ⚠️ SPAM
-                                                    </span>
-                                                )}
                                             </div>
                                             <div className="text-xs text-gray-400 mt-1">
                                                 {formatDate(tx.timestamp)}
@@ -601,15 +596,16 @@ export function PreviewB({
                                             {tx.feeAmount ? formatAmount(tx.feeAmount) : '-'}
                                         </td>
                                         <td className="py-2 px-2 text-xs">
-                                            <span className={`px-1.5 py-0.5 rounded ${tx.type === 'Trade' ? 'bg-blue-500/20 text-blue-400' :
-                                                tx.type === 'Deposit' ? 'bg-green-500/20 text-green-400' :
-                                                    tx.type === 'Withdrawal' ? 'bg-red-500/20 text-red-400' :
-                                                        tx.type === 'Investment Loss' ? 'bg-orange-500/20 text-orange-400' :
-                                                            tx.type === 'Theft Loss' ? 'bg-red-600/20 text-red-400' :
-                                                                tx.type === 'Casualty Loss' ? 'bg-red-600/20 text-red-400' :
-                                                                    'bg-gray-500/20 text-gray-400'
+                                            <span className={`px-1.5 py-0.5 rounded ${tx.isSpam ? 'bg-gray-500/20 text-gray-400 line-through' :
+                                                tx.type === 'Trade' ? 'bg-blue-500/20 text-blue-400' :
+                                                    tx.type === 'Deposit' ? 'bg-green-500/20 text-green-400' :
+                                                        tx.type === 'Withdrawal' ? 'bg-red-500/20 text-red-400' :
+                                                            tx.type === 'Investment Loss' ? 'bg-orange-500/20 text-orange-400' :
+                                                                tx.type === 'Theft Loss' ? 'bg-red-600/20 text-red-400' :
+                                                                    tx.type === 'Casualty Loss' ? 'bg-red-600/20 text-red-400' :
+                                                                        'bg-gray-500/20 text-gray-400'
                                                 }`}>
-                                                {tx.type}
+                                                {tx.isSpam ? '🚫 Ignored' : tx.type}
                                             </span>
                                         </td>
                                         <td className="py-2 px-2 text-gray-300 text-xs font-mono truncate max-w-[100px]">

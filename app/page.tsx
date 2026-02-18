@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { NormalizedTransaction } from '@/lib/types';
-import { getTransactionTypeInfo, getTransactionIcon } from '@/lib/transaction-education';
+import { getTransactionTypeInfo, getTransactionIcon, isLikelySpam } from '@/lib/transaction-education';
 import { copyToClipboard, truncateAddress, formatAmount, getTokenDisplayName } from '@/lib/ui-utils';
 import { PreviewA, PreviewB } from '@/components/TransactionPreviews';
 
@@ -178,9 +178,25 @@ export default function Home() {
 
                 // Populate state
                 setCachedData(data);
-                setTransactions(data.transactions);
-                setSummary(data.summary || null);
                 setWalletAddress(data.walletAddress || walletAddress);
+
+                // Re-evaluate spam for unclassified transactions in uploaded data
+                const reEvaluated = data.transactions.map((tx: NormalizedTransaction) => {
+                    // Skip already-classified transactions (isSpam explicitly true or false)
+                    if (tx.isSpam === true || tx.isSpam === false) return tx;
+
+                    // Run client-side heuristic spam detection
+                    const spam = isLikelySpam(tx);
+                    return {
+                        ...tx,
+                        isSpam: spam,
+                        spamConfidence: spam ? 0.7 : 0,
+                        spamReasons: spam ? ['Heuristic: uploaded data re-evaluation'] : [],
+                    };
+                });
+
+                setTransactions(reEvaluated);
+                setSummary(data.summary || null);
 
                 // Populate filters if available
                 if (data.filters) {
@@ -191,7 +207,8 @@ export default function Home() {
                     setIncludeSpam(data.filters.includeSpam ?? false);
                 }
 
-                alert(`✅ Loaded ${data.transactions.length} cached transactions from ${new Date(data.fetchedAt).toLocaleString()}`);
+                const spamFound = reEvaluated.filter((tx: NormalizedTransaction) => tx.isSpam === true).length;
+                alert(`✅ Loaded ${data.transactions.length} cached transactions from ${new Date(data.fetchedAt).toLocaleString()}\n${spamFound > 0 ? `🗑️ ${spamFound} spam detected` : '✨ No spam detected'}`);
             } catch (err: any) {
                 alert(`❌ Error loading cache file: ${err.message}`);
                 setError(err.message);
@@ -213,12 +230,12 @@ export default function Home() {
         if (includeSpam) {
             return transactions; // Show all
         }
-        return transactions.filter(tx => !tx.isSpam); // Exclude spam
+        return transactions.filter(tx => !tx.isSpam); // Exclude spam (isSpam=true filtered out; undefined/false pass through)
     }, [transactions, includeSpam]);
 
     // Calculate spam count for badge
     const filteredSpamCount = useMemo(() => {
-        return transactions.filter(tx => tx.isSpam).length;
+        return transactions.filter(tx => tx.isSpam === true).length;
     }, [transactions]);
 
     // Filter transactions for search
@@ -354,7 +371,14 @@ export default function Home() {
                                 onChange={(e) => setUseAI(e.target.checked)}
                                 className="w-5 h-5 rounded border-gray-700 bg-gray-800/50 text-purple-600 focus:ring-purple-500 focus:ring-offset-gray-900"
                             />
-                            <span className="text-gray-300">Use AI Classification & Spam Filter</span>
+                            <div>
+                                <span className="text-gray-300">Use AI Classification & Spam Filter</span>
+                                <span className="text-xs text-gray-500 block mt-0.5">
+                                    {useAI
+                                        ? '🤖 Gemini AI: smarter spam detection + transaction classification (uses API key)'
+                                        : '⚡ Heuristic mode: rule-based spam detection only (faster, no API key needed)'}
+                                </span>
+                            </div>
                         </label>
                     </div>
 
@@ -389,8 +413,8 @@ export default function Home() {
                                 📥 Download Data
                             </button>
 
-                            <label className="flex-1 cursor-pointer">
-                                <div className="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg font-medium text-sm transition-all text-center">
+                            <label className={`flex-1 ${loading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>
+                                <div className={`px-4 py-2 ${loading ? 'bg-gray-700' : 'bg-orange-600 hover:bg-orange-700'} rounded-lg font-medium text-sm transition-all text-center`}>
                                     📤 Upload Cached Data
                                 </div>
                                 <input
@@ -398,6 +422,7 @@ export default function Home() {
                                     accept=".json"
                                     onChange={handleUploadData}
                                     className="hidden"
+                                    disabled={loading}
                                 />
                             </label>
 
@@ -417,28 +442,6 @@ export default function Home() {
                             <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded">
                                 <span className="text-green-400 text-sm">✅ Using cached data from {new Date(cachedData.fetchedAt).toLocaleString()}</span>
                                 <span className="text-gray-400 text-xs">({transactions.length} transactions)</span>
-                            </div>
-                        )}
-
-                        {/* Spam Filter Toggle */}
-                        {transactions.length > 0 && (
-                            <div className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={includeSpam}
-                                        onChange={(e) => setIncludeSpam(e.target.checked)}
-                                        className="w-4 h-4 accent-purple-500"
-                                    />
-                                    <span className="text-sm font-medium text-purple-300">
-                                        {includeSpam ? '🗑️ Spam Included' : '✨ Spam Excluded'}
-                                    </span>
-                                </label>
-                                {!includeSpam && filteredSpamCount > 0 && (
-                                    <span className="text-xs text-gray-400">
-                                        ({filteredSpamCount} spam hidden)
-                                    </span>
-                                )}
                             </div>
                         )}
                     </div>
@@ -509,9 +512,30 @@ export default function Home() {
                 {visibleTransactions.length > 0 && (
                     <div className="space-y-4">
                         {/* Global Controls */}
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center flex-wrap gap-3">
                             <h2 className="text-2xl font-semibold">Transaction Previews</h2>
-                            <div className="flex gap-3">
+                            <div className="flex gap-3 items-center flex-wrap">
+                                {/* Spam Filter Toggle */}
+                                {filteredSpamCount > 0 && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={includeSpam}
+                                                onChange={(e) => setIncludeSpam(e.target.checked)}
+                                                className="w-4 h-4 accent-purple-500"
+                                            />
+                                            <span className="text-sm font-medium text-purple-300">
+                                                {includeSpam ? '🗑️ Spam Included' : '✨ Spam Excluded'}
+                                            </span>
+                                        </label>
+                                        {!includeSpam && (
+                                            <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">
+                                                {filteredSpamCount} ignored
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                                 {/* UTC/Local Toggle */}
                                 <div className="flex bg-gray-800/50 rounded-lg p-1">
                                     <button

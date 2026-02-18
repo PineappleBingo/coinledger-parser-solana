@@ -18,7 +18,8 @@ export type CoinLedgerType =
     | 'Theft Loss'
     | 'Investment Loss'
     | 'Interest Payment'
-    | 'Merchant Payment';
+    | 'Merchant Payment'
+    | 'Ignored';
 
 export interface SolscanTokenTransfer {
     trans_id: string;
