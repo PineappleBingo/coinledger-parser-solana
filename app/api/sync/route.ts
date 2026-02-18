@@ -61,11 +61,12 @@ export async function POST(req: NextRequest) {
         console.log('\n[2/5] Parsing Solana instructions...');
         const parsedTransactions = rawTransfers.map((transfer) => {
             const parsed = parseTokenTransfer(transfer, walletAddress);
+            const transferTime = typeof transfer.time === 'string' ? parseInt(transfer.time) : transfer.time;
             return {
                 ...parsed,
                 id: transfer.trans_id,
                 txHash: transfer.trans_id,
-                timestamp: new Date(transfer.time * 1000),
+                timestamp: new Date(transferTime * 1000),
                 type: classifyTransactionType(parsed),
                 description: generateDescription(parsed),
                 isSpam: false,

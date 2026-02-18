@@ -1,6 +1,6 @@
 /**
  * Solana Transaction Parser
- * Converts Solscan API responses to CoinLedger format
+ * Converts Helius API responses to CoinLedger format
  */
 
 import { format } from 'date-fns';
@@ -14,6 +14,7 @@ import {
 } from './types';
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
+const FEE_THRESHOLD = 0.01; // SOL threshold for identifying fees
 
 /**
  * Detect the DEX platform from program IDs
@@ -40,7 +41,105 @@ export function detectPlatform(instructions: any[]): string {
 }
 
 /**
- * Parse token transfer into normalized transaction
+ * Parse grouped token transfers (from same transaction) into a single normalized transaction
+ * This is the main parser for Helius API data that properly handles swaps (Trades)
+ */
+export function parseGroupedTransfers(
+    transfers: SolscanTokenTransfer[],
+    userWallet: string,
+    tokenMetadataMap?: Map<string, TokenMetadata>
+): NormalizedTransaction {
+    if (transfers.length === 0) {
+        throw new Error('Cannot parse empty transfer group');
+    }
+
+    // 🔍 DEBUG LOGGING
+    console.log(`\n🧩 [PARSE] Group: ${transfers[0].trans_id.substring(0, 8)}... (${transfers.length} transfers)`);
+
+    const firstTransfer = transfers[0];
+    const timestamp = typeof firstTransfer.time === 'string' ? parseInt(firstTransfer.time) : firstTransfer.time;
+
+    // Separate transfers by flow
+    const outgoing = transfers.filter(t => t.flow === 'out');
+    const incoming = transfers.filter(t => t.flow === 'in');
+
+    console.log(`   Outgoing: ${outgoing.length}, Incoming: ${incoming.length}`);
+    outgoing.forEach(t => console.log(`     OUT: ${t.token_symbol} ${t.amount}`));
+    incoming.forEach(t => console.log(`     IN:  ${t.token_symbol} ${t.amount}`));
+
+    // Identify fee (small SOL outgoing transfer)
+    const feeTransfer = outgoing.find(t =>
+        (t.token_symbol === 'SOL' || t.token_symbol === 'WSOL') && t.amount < FEE_THRESHOLD
+    );
+
+    console.log(`   Fee detected: ${feeTransfer ? `${feeTransfer.amount} SOL` : 'None'}`);
+
+    // Filter out fee from main transfers
+    const mainOutgoing = outgoing.filter(t => t !== feeTransfer);
+    const mainIncoming = incoming;
+
+    console.log(`   Main OUT: ${mainOutgoing.length}, Main IN: ${mainIncoming.length}`);
+
+    // Determine transaction type
+    let type: CoinLedgerType;
+    if (mainOutgoing.length > 0 && mainIncoming.length > 0) {
+        type = 'Trade'; // Swap: has both sent and received
+    } else if (mainIncoming.length > 0) {
+        type = 'Income'; // Only incoming (will be refined by AI to Deposit/Airdrop/etc)
+    } else if (mainOutgoing.length > 0) {
+        type = 'Withdrawal'; // Only outgoing
+    } else {
+        type = 'Trade'; // Fallback
+    }
+
+    // Get sent and received transfers
+    const sentTransfer = mainOutgoing[0];
+    const receivedTransfer = mainIncoming[0];
+
+    // Get metadata for better token names
+    const sentMetadata = sentTransfer ? tokenMetadataMap?.get(sentTransfer.token_address) : undefined;
+    const receivedMetadata = receivedTransfer ? tokenMetadataMap?.get(receivedTransfer.token_address) : undefined;
+
+    // Build normalized transaction
+    const transaction: NormalizedTransaction = {
+        id: firstTransfer.trans_id,
+        txHash: firstTransfer.trans_id,
+        timestamp: new Date(timestamp * 1000),
+        platform: 'Solana',
+
+        // Sent (Sell) info
+        assetSent: sentTransfer ? (sentMetadata?.symbol || sentTransfer.token_symbol) : undefined,
+        amountSent: sentTransfer?.amount,
+        tokenAddress: sentTransfer?.token_address || receivedTransfer?.token_address,
+
+        // Received (Buy) info
+        assetReceived: receivedTransfer ? (receivedMetadata?.symbol || receivedTransfer.token_symbol) : undefined,
+        amountReceived: receivedTransfer?.amount,
+
+        // Fee info
+        feeCurrency: feeTransfer ? 'SOL' : undefined,
+        feeAmount: feeTransfer?.amount,
+
+        // Classification
+        type,
+        description: generateDescriptionFromTransfers(sentTransfer, receivedTransfer, type),
+
+        // Token images
+        tokenImageUrl: sentMetadata?.logoURI || receivedMetadata?.logoURI,
+
+        // Spam detection (to be filled by AI)
+        isSpam: false,
+        spamConfidence: 0,
+        spamReasons: [],
+        aiConfidence: 0.5,
+    };
+
+    return transaction;
+}
+
+/**
+ * Parse token transfer into normalized transaction (legacy single-transfer parser)
+ * Keep this for backwards compatibility
  */
 export function parseTokenTransfer(
     transfer: SolscanTokenTransfer,
@@ -50,11 +149,14 @@ export function parseTokenTransfer(
     const isSent = transfer.from_address === userWallet;
 
     // Calculate actual amount considering decimals
-    const amount = parseFloat(transfer.amount) / Math.pow(10, transfer.token_decimals);
+    const decimals = typeof transfer.token_decimals === 'string' ? parseInt(transfer.token_decimals) : transfer.token_decimals;
+    const amountStr = typeof transfer.amount === 'string' ? transfer.amount : String(transfer.amount);
+    const amount = parseFloat(amountStr) / Math.pow(10, decimals);
 
+    const timestamp = typeof transfer.time === 'string' ? parseInt(transfer.time) : transfer.time;
     const base: Partial<NormalizedTransaction> = {
         txHash: transfer.trans_id,
-        timestamp: new Date(transfer.time * 1000),
+        timestamp: new Date(timestamp * 1000),
         platform: 'Solana',
     };
 
@@ -154,15 +256,28 @@ export function parseSwapInstruction(
 }
 
 /**
+ * Format asset name for export - includes full address for unknown tokens
+ */
+function formatAssetForExport(asset?: string, tokenAddress?: string): string {
+    if (!asset || asset === 'UNKNOWN') {
+        if (tokenAddress) {
+            return `UNKNOWN (${tokenAddress})`;
+        }
+        return 'UNKNOWN';
+    }
+    return asset;
+}
+
+/**
  * Convert normalized transaction to CoinLedger CSV row
  */
 export function toCoinLedgerRow(tx: NormalizedTransaction): CoinLedgerRow {
     return {
         'Date (UTC)': format(tx.timestamp, 'MM/dd/yyyy HH:mm:ss'),
         'Platform': tx.platform || '',
-        'Asset Sent': tx.assetSent || '',
+        'Asset Sent': formatAssetForExport(tx.assetSent, tx.tokenAddress),
         'Amount Sent': tx.amountSent?.toString() || '',
-        'Asset Received': tx.assetReceived || '',
+        'Asset Received': formatAssetForExport(tx.assetReceived, tx.tokenAddress),
         'Amount Received': tx.amountReceived?.toString() || '',
         'Fee Currency': tx.feeCurrency || '',
         'Fee Amount': tx.feeAmount?.toString() || '',
@@ -193,6 +308,24 @@ export function classifyTransactionType(
     }
 
     return 'Trade'; // Default fallback
+}
+
+/**
+ * Generate human-readable description from transfers
+ */
+function generateDescriptionFromTransfers(
+    sentTransfer?: SolscanTokenTransfer,
+    receivedTransfer?: SolscanTokenTransfer,
+    type?: CoinLedgerType
+): string {
+    if (sentTransfer && receivedTransfer) {
+        return `Swapped ${sentTransfer.amount} ${sentTransfer.token_symbol} for ${receivedTransfer.amount} ${receivedTransfer.token_symbol}`;
+    } else if (receivedTransfer) {
+        return `Received ${receivedTransfer.amount} ${receivedTransfer.token_symbol}`;
+    } else if (sentTransfer) {
+        return `Sent ${sentTransfer.amount} ${sentTransfer.token_symbol}`;
+    }
+    return 'Transaction';
 }
 
 /**

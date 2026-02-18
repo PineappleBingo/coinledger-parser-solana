@@ -24,7 +24,22 @@ export async function detectSpamHeuristic(
 
     const tokenName = tx.assetReceived || tx.assetSent || '';
 
-    // Factor 1: Suspicious keywords in token name
+    // Factor 1a: CRITICAL - Zero amount (dust attack)
+    // Transactions with 0 amount are always spam/dust attacks
+    if ((tx.amountReceived !== undefined && tx.amountReceived === 0) ||
+        (tx.amountSent !== undefined && tx.amountSent === 0)) {
+        spamScore += 1.0; // Automatic spam - zero amount is always dust
+        reasons.push('Zero amount transfer (dust attack)');
+    }
+
+    // Factor 1b: Unknown or invalid token
+    // UNKNOWN tokens indicate metadata fetch failed or invalid token
+    if (tokenName === 'UNKNOWN' || tokenName === '') {
+        spamScore += 0.4;
+        reasons.push('Unknown or invalid token');
+    }
+
+    // Factor 2: Suspicious keywords in token name
     const suspiciousPatterns = [
         /claim/i,
         /airdrop/i,
@@ -87,7 +102,7 @@ export async function detectSpamWithAI(
 ): Promise<SpamDetectionResult> {
     try {
         const model = genAI.getGenerativeModel({
-            model: process.env.GEMINI_MODEL_SIMPLE || 'gemini-1.5-flash-latest'
+            model: process.env.GEMINI_MODEL_SIMPLE || 'gemini-2.0-flash',
         });
 
         const prompt = `
@@ -147,7 +162,7 @@ export async function classifyTransactionWithAI(
 }> {
     try {
         const model = genAI.getGenerativeModel({
-            model: process.env.GEMINI_MODEL_SIMPLE || 'gemini-1.5-flash-latest'
+            model: process.env.GEMINI_MODEL_SIMPLE || 'gemini-2.0-flash',
         });
 
         const prompt = `
@@ -232,6 +247,21 @@ export async function batchProcessWithAI(
                     classifyTransactionWithAI(tx),
                 ]);
 
+                // Respect pre-set isSpam=false (e.g. rent redemption override)
+                // Only apply AI spam result if not already manually classified
+                const finalIsSpam = tx.isSpam === false
+                    ? false  // Rent redemption or other manual override - never mark as spam
+                    : spamResult.isSpam;
+
+                // Respect pre-set type (e.g. rent redemption classified as Income)
+                const finalType = (tx.type && tx.type !== 'Trade' && tx.isSpam === false)
+                    ? tx.type  // Keep manual classification
+                    : classification.type;
+
+                const finalDescription = (tx.description && tx.isSpam === false && tx.type !== 'Trade')
+                    ? tx.description  // Keep manual description
+                    : classification.description;
+
                 return {
                     id: tx.txHash || `tx-${Date.now()}-${Math.random()}`,
                     timestamp: tx.timestamp || new Date(),
@@ -243,12 +273,12 @@ export async function batchProcessWithAI(
                     amountReceived: tx.amountReceived,
                     feeCurrency: tx.feeCurrency,
                     feeAmount: tx.feeAmount,
-                    type: classification.type,
-                    description: classification.description,
+                    type: finalType,
+                    description: finalDescription,
                     priceUSD,
-                    isSpam: spamResult.isSpam,
-                    spamConfidence: spamResult.confidence,
-                    spamReasons: spamResult.reasons,
+                    isSpam: finalIsSpam,
+                    spamConfidence: finalIsSpam ? spamResult.confidence : 0,
+                    spamReasons: finalIsSpam ? spamResult.reasons : [],
                     aiConfidence: classification.confidence,
                 } as NormalizedTransaction;
             })

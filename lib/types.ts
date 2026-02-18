@@ -7,11 +7,17 @@ export type CoinLedgerType =
     | 'Deposit'
     | 'Withdrawal'
     | 'Income'
+    | 'Interest'
     | 'Mining'
     | 'Staking'
+    | 'Hard Fork'
     | 'Airdrop'
-    | 'Gift Sent'
     | 'Gift Received'
+    | 'Gift Sent'
+    | 'Casualty Loss'
+    | 'Theft Loss'
+    | 'Investment Loss'
+    | 'Interest Payment'
     | 'Merchant Payment';
 
 export interface SolscanTokenTransfer {
@@ -60,6 +66,13 @@ export interface PriceData {
     confidence: number;
 }
 
+export interface LossDetectionResult {
+    isLoss: boolean;
+    lossType?: 'Investment Loss' | 'Casualty Loss' | 'Theft Loss';
+    reason: string;
+    estimatedLossUSD?: number;
+}
+
 export interface NormalizedTransaction {
     id: string;
     timestamp: Date;
@@ -83,10 +96,19 @@ export interface NormalizedTransaction {
     // Metadata
     priceUSD?: number;
     tokenImageUrl?: string; // Token logo image URL
+    tokenAddress?: string; // Full token address for unknown tokens
     isSpam: boolean;
     spamConfidence: number;
     spamReasons: string[];
     aiConfidence: number;
+
+    // Loss detection
+    lossInfo?: LossDetectionResult;
+
+    // Cost analysis
+    costBasisUSD?: number;
+    proceedsUSD?: number;
+    gainLossUSD?: number;
 }
 
 export interface CoinLedgerRow {
